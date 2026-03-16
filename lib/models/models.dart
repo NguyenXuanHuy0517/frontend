@@ -40,7 +40,6 @@ class RoomModel {
     required this.address,
     required this.latitude,
     required this.longitude,
-    // legacy
     required this.id,
     required this.area,
     this.tenant,
@@ -49,34 +48,81 @@ class RoomModel {
   });
 
   factory RoomModel.fromJson(Map<String, dynamic> json) {
-    RoomStatus parseStatus(String s) {
-      switch (s.toUpperCase()) {
-        case 'AVAILABLE': return RoomStatus.available;
-        case 'OCCUPIED':  return RoomStatus.occupied;
-        case 'MAINTENANCE': return RoomStatus.maintenance;
-        default: return RoomStatus.available;
+    // ── Robust numeric parsers ──────────────────────────────────────────────
+    // Backend trả BigDecimal/double (vd: 3500.00), Flutter cần int
+    int parseInt(dynamic v, [int fallback = 0]) {
+      if (v == null) return fallback;
+      if (v is int) return v;
+      if (v is double) return v.toInt();
+      if (v is String) return int.tryParse(v.split('.').first) ?? fallback;
+      return fallback;
+    }
+
+    double parseDouble(dynamic v, [double fallback = 0.0]) {
+      if (v == null) return fallback;
+      if (v is double) return v;
+      if (v is int) return v.toDouble();
+      if (v is String) return double.tryParse(v) ?? fallback;
+      return fallback;
+    }
+
+    // ── Status ──────────────────────────────────────────────────────────────
+    RoomStatus parseStatus(dynamic s) {
+      final str = (s ?? '').toString().toUpperCase();
+      switch (str) {
+        case 'AVAILABLE':   return RoomStatus.available;
+        case 'OCCUPIED':
+        case 'RENTED':      return RoomStatus.occupied;
+        case 'MAINTENANCE':
+        case 'DEPOSITED':   return RoomStatus.maintenance;
+        default:            return RoomStatus.available;
       }
     }
 
+    // ── Images & Amenities ──────────────────────────────────────────────────
+    // Backend có thể trả List hoặc comma-separated String
+    List<String> parseStringList(dynamic v) {
+      if (v == null) return [];
+      if (v is List) return v.map((e) => e.toString()).toList();
+      if (v is String && v.isNotEmpty) {
+        return v.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+      }
+      return [];
+    }
+
+    final roomId   = parseInt(json['roomId']);
+    final roomCode = json['roomCode']?.toString() ?? '';
+    final basePrice = parseInt(json['basePrice']);
+    final elecPrice = parseInt(json['elecPrice']);
+    final waterPrice = parseInt(json['waterPrice']);
+    final areaSize  = parseInt(json['areaSize']);
+    final status    = parseStatus(json['status']);
+    final images    = parseStringList(json['images']);
+    final amenities = parseStringList(json['amenities']);
+    final areaName  = json['areaName']?.toString() ?? '';
+    final address   = json['address']?.toString() ?? '';
+    final latitude  = parseDouble(json['latitude']);
+    final longitude = parseDouble(json['longitude']);
+
     return RoomModel(
-      roomId: json['roomId'] ?? 0,
-      roomCode: json['roomCode'] ?? '',
-      basePrice: json['basePrice'] ?? 0,
-      elecPrice: json['elecPrice'] ?? 0,
-      waterPrice: json['waterPrice'] ?? 0,
-      status: parseStatus(json['status'] ?? 'AVAILABLE'),
-      areaSize: json['areaSize'] ?? 0,
-      images: (json['images'] as List?)?.map((e) => e.toString()).toList() ?? [],
-      amenities: (json['amenities'] as List?)?.map((e) => e.toString()).toList() ?? [],
-      areaName: json['areaName'] ?? '',
-      address: json['address'] ?? '',
-      latitude: (json['latitude'] is num) ? (json['latitude'] as num).toDouble() : double.tryParse('${json['latitude']}') ?? 0.0,
-      longitude: (json['longitude'] is num) ? (json['longitude'] as num).toDouble() : double.tryParse('${json['longitude']}') ?? 0.0,
-      // legacy UI fields derived from API
-      id: json['roomCode'] != null ? json['roomCode'].toString() : 'R${json['roomId']}',
-      area: json['areaName'] ?? '',
+      roomId: roomId,
+      roomCode: roomCode,
+      basePrice: basePrice,
+      elecPrice: elecPrice,
+      waterPrice: waterPrice,
+      status: status,
+      areaSize: areaSize,
+      images: images,
+      amenities: amenities,
+      areaName: areaName,
+      address: address,
+      latitude: latitude,
+      longitude: longitude,
+      // legacy UI fields
+      id: roomCode.isNotEmpty ? roomCode : 'R$roomId',
+      area: areaName,
       tenant: null,
-      rent: json['basePrice'] ?? 0,
+      rent: basePrice,
       floor: 1,
     );
   }
@@ -109,13 +155,23 @@ class ChatMessage {
       : time = time ?? DateTime.now();
 }
 
-// ─── Mock Data (kept for local dev / fallback) ───────────────────────────────
+// ─── Mock / Fallback Data ─────────────────────────────────────────────────────
 
 final kRooms = <RoomModel>[
-  RoomModel(roomId: 1, roomCode: 'R001', basePrice: 2010000, elecPrice: 3500, waterPrice: 15000, status: RoomStatus.available, areaSize: 21, images: [], amenities: [], areaName: 'Area 1', address: 'Address 1, Ho Chi Minh City', latitude: 10.7001, longitude: 106.6001, id: 'R001', area: 'Area 1', tenant: null, rent: 2010000, floor: 1),
-  RoomModel(roomId: 2, roomCode: 'R002', basePrice: 2020000, elecPrice: 3500, waterPrice: 15000, status: RoomStatus.available, areaSize: 22, images: [], amenities: [], areaName: 'Area 2', address: 'Address 2, Ho Chi Minh City', latitude: 10.7002, longitude: 106.6002, id: 'R002', area: 'Area 2', tenant: null, rent: 2020000, floor: 1),
+  RoomModel(
+    roomId: 1, roomCode: 'R001', basePrice: 2010000,
+    elecPrice: 3500, waterPrice: 15000,
+    status: RoomStatus.available, areaSize: 21,
+    images: [], amenities: [],
+    areaName: 'Khu A', address: 'Hồ Chí Minh',
+    latitude: 10.7001, longitude: 106.6001,
+    id: 'R001', area: 'Khu A', tenant: null, rent: 2010000, floor: 1,
+  ),
 ];
 
 final kInvoices = <InvoiceModel>[
-  InvoiceModel(id: 'HD001', room: 'R001', tenant: 'Nguyen A', amount: 4250000, status: InvoiceStatus.paid, due: '01/07/2025'),
+  InvoiceModel(
+    id: 'HD001', room: 'R001', tenant: 'Nguyễn A',
+    amount: 4250000, status: InvoiceStatus.paid, due: '01/07/2025',
+  ),
 ];
