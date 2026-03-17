@@ -60,23 +60,32 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
   }
 
   Future<void> _saveEdit(RoomModel room) async {
+    // Parse helpers — backend RoomDetailDTO dùng BigDecimal nên gửi number là OK
+    num safeNum(String s, num fallback) {
+      return num.tryParse(s.replaceAll(RegExp(r'[^\d.]'), '')) ?? fallback;
+    }
     int safeInt(String s, int fallback) {
       return int.tryParse(s.replaceAll(RegExp(r'[^\d]'), '')) ?? fallback;
     }
+
+    // Chỉ gửi các field mà RoomDetailDTO backend có.
+    // areaName/address thuộc MotelArea, backend sẽ bỏ qua nếu không map.
     final payload = {
       'roomId': room.roomId,
       'roomCode': room.roomCode,
-      'basePrice': safeInt(_basePriceCtl.text, room.basePrice),
-      'elecPrice': safeInt(_elecPriceCtl.text, room.elecPrice),
-      'waterPrice': safeInt(_waterPriceCtl.text, room.waterPrice),
-      'status': room.status.toString().split('.').last.toUpperCase(),
-      'areaSize': safeInt(_areaSizeCtl.text, room.areaSize),
+      'basePrice': safeNum(_basePriceCtl.text, room.basePrice),
+      'elecPrice': safeNum(_elecPriceCtl.text, room.elecPrice),
+      'waterPrice': safeNum(_waterPriceCtl.text, room.waterPrice),
+      'status': _roomStatusString(room.status),
+      'areaSize': safeInt(_areaSizeCtl.text, room.areaSize).toDouble(),
       'areaName': _areaNameCtl.text.trim().isEmpty ? room.areaName : _areaNameCtl.text.trim(),
       'address': _addressCtl.text.trim().isEmpty ? room.address : _addressCtl.text.trim(),
-      'amenities': _amenitiesCtl.text.isEmpty ? [] : _amenitiesCtl.text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList(),
-      'images': room.images,
       'latitude': room.latitude,
       'longitude': room.longitude,
+      'images': room.images,
+      'amenities': _amenitiesCtl.text.trim().isEmpty
+          ? room.amenities
+          : _amenitiesCtl.text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList(),
     };
     try {
       final updated = await ApiClient.updateRoom(widget.roomId, payload);
@@ -104,6 +113,12 @@ class _RoomDetailScreenState extends State<RoomDetailScreen> with SingleTickerPr
   void _showSnack(String msg, Color color) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: color, behavior: SnackBarBehavior.floating));
   }
+
+  String _roomStatusString(RoomStatus s) => switch (s) {
+    RoomStatus.available => 'AVAILABLE',
+    RoomStatus.occupied => 'OCCUPIED',
+    RoomStatus.maintenance => 'MAINTENANCE',
+  };
 
   void _showStatusSheet(RoomModel room) {
     showModalBottomSheet(

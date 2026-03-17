@@ -7,8 +7,6 @@ import 'screens/rooms_screen.dart';
 import 'screens/invoices_screen.dart';
 import 'screens/utilities_screen.dart';
 import 'widgets/chatbot_widget.dart';
-import 'services/api.dart';
-import 'screens/room_detail_screen.dart';
 
 void main() {
   runApp(const PhongTro40App());
@@ -68,26 +66,24 @@ class _AppShellState extends State<AppShell> {
 
   @override
   Widget build(BuildContext context) {
-    // Wide = Desktop/Tablet sidebar layout
-    // Narrow = Mobile bottom nav layout
     return LayoutBuilder(builder: (context, constraints) {
       final isWide = constraints.maxWidth >= 768;
       return isWide
           ? _WideLayout(
-              selectedIndex: _selectedIndex,
-              onNavTap: (i) => setState(() => _selectedIndex = i),
-              child: _buildScreen(_selectedIndex),
-            )
+        selectedIndex: _selectedIndex,
+        onNavTap: (i) => setState(() => _selectedIndex = i),
+        child: _buildScreen(_selectedIndex),
+      )
           : _NarrowLayout(
-              selectedIndex: _selectedIndex,
-              onNavTap: (i) => setState(() => _selectedIndex = i),
-              child: _buildScreen(_selectedIndex),
-            );
+        selectedIndex: _selectedIndex,
+        onNavTap: (i) => setState(() => _selectedIndex = i),
+        child: _buildScreen(_selectedIndex),
+      );
     });
   }
 }
 
-// ─── Wide Layout (Desktop / Web / Tablet) ────────────────────────────────────
+// ─── Wide Layout ──────────────────────────────────────────────────────────────
 
 class _WideLayout extends StatelessWidget {
   final int selectedIndex;
@@ -140,11 +136,11 @@ class _WideLayout extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     child: Column(
                       children: _navItems.asMap().entries.map((e) =>
-                        _SidebarItem(
-                          item: e.value,
-                          selected: selectedIndex == e.key,
-                          onTap: () => onNavTap(e.key),
-                        )).toList(),
+                          _SidebarItem(
+                            item: e.value,
+                            selected: selectedIndex == e.key,
+                            onTap: () => onNavTap(e.key),
+                          )).toList(),
                     ),
                   ),
                 ),
@@ -170,7 +166,7 @@ class _WideLayout extends StatelessWidget {
           Expanded(
             child: Column(
               children: [
-                // Top bar
+                // Top bar — chỉ hiển thị tiêu đề + notification + avatar
                 Container(
                   height: 64,
                   padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -191,25 +187,6 @@ class _WideLayout extends StatelessWidget {
                         ],
                       ),
                       const Spacer(),
-                      // Search
-                      Container(
-                        width: 200,
-                        height: 38,
-                        decoration: BoxDecoration(
-                          color: AppColors.muted, borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          children: [
-                            const SizedBox(width: 10),
-                            const Icon(Icons.search, size: 16, color: AppColors.textMuted),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: _SearchField(),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 12),
                       _NotificationBell(),
                       const SizedBox(width: 12),
                       Container(
@@ -249,7 +226,6 @@ class _NarrowLayout extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Show only first 4 in bottom nav
     final bottomNavItems = _navItems.take(4).toList();
     return Scaffold(
       appBar: AppBar(
@@ -398,7 +374,7 @@ class _NotificationBell extends StatelessWidget {
         Positioned(
           top: 6, right: 6,
           child: Container(width: 7, height: 7,
-            decoration: const BoxDecoration(color: AppColors.danger, shape: BoxShape.circle)),
+              decoration: const BoxDecoration(color: AppColors.danger, shape: BoxShape.circle)),
         ),
       ],
     );
@@ -432,51 +408,6 @@ class _PlaceholderScreen extends StatelessWidget {
             label: const Text('Thêm mới'),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _SearchField extends StatefulWidget {
-  @override
-  __SearchFieldState createState() => __SearchFieldState();
-}
-
-class __SearchFieldState extends State<_SearchField> {
-  final TextEditingController _controller = TextEditingController();
-
-  void _onSearch() async {
-    final code = _controller.text.trim();
-    if (code.isEmpty) return;
-
-    try {
-      final result = await ApiClient.fetchRoomByCode(code);
-      // Navigate to room detail screen if found
-      Navigator.of(context).push(MaterialPageRoute(
-        builder: (context) => RoomDetailScreen(roomId: result.roomId),
-      ));
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Không tìm thấy phòng với mã $code. Lỗi: $e')),
-      );
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return TextField(
-      controller: _controller,
-      onSubmitted: (_) => _onSearch(),
-      decoration: InputDecoration(
-        hintText: 'Tìm kiếm theo mã phòng...',
-        hintStyle: GoogleFonts.outfit(color: AppColors.textMuted, fontSize: 13),
-        border: InputBorder.none,
-        contentPadding: EdgeInsets.zero,
-        filled: false,
-        suffixIcon: IconButton(
-          icon: const Icon(Icons.search, color: AppColors.textMuted, size: 16),
-          onPressed: _onSearch,
-        ),
       ),
     );
   }

@@ -1,86 +1,88 @@
 // lib/services/api.dart
-
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/models.dart' as m;
 
-const API_BASE_URL = 'http://localhost:8081';
+const _base = 'http://localhost:8081';
 
-/// Helper: giải nén data từ ApiResponse wrapper { success, message, data }
-/// Backend trả về { "success": true, "message": "...", "data": ... }
-/// Nếu response là plain List/Object (không bọc wrapper), dùng thẳng.
+/// Unwrap ApiResponse wrapper { "success":true, "data": ... }
+/// Nếu response là plain data (không có key "data") thì trả thẳng
 dynamic _unwrap(dynamic decoded) {
-  if (decoded is Map<String, dynamic> && decoded.containsKey('data')) {
-    return decoded['data'];
+  if (decoded is Map<String, dynamic>) {
+    if (decoded.containsKey('data')) return decoded['data'];
+    if (decoded.containsKey('success') && decoded['success'] == false) {
+      throw Exception(decoded['message'] ?? 'Lỗi từ server');
+    }
   }
   return decoded;
 }
 
 class ApiClient {
-  // ─── Fetch rooms overview ──────────────────────────────────────────────────
+  // ── Fetch rooms overview ───────────────────────────────────────────────────
   static Future<List<m.RoomModel>> fetchRoomsOverview() async {
-    final uri = Uri.parse('$API_BASE_URL/api/business/rooms/overview');
-    final resp = await http.get(uri).timeout(const Duration(seconds: 10));
-    if (resp.statusCode != 200) {
-      throw Exception('Lỗi tải danh sách phòng: ${resp.statusCode} ${resp.reasonPhrase}');
-    }
-    final dynamic decoded = json.decode(resp.body);
-    final dynamic data = _unwrap(decoded);
-    if (data is! List) {
-      throw Exception('Dữ liệu phòng không đúng định dạng (nhận: ${data.runtimeType})');
-    }
+    final resp = await http.get(Uri.parse('$_base/api/business/rooms/overview'))
+        .timeout(const Duration(seconds: 15));
+    _checkStatus(resp);
+    final data = _unwrap(json.decode(resp.body));
+    if (data is! List) throw Exception('Dữ liệu không đúng định dạng (không phải List)');
     return data.map((e) => m.RoomModel.fromJson(e as Map<String, dynamic>)).toList();
   }
 
-  // ─── Fetch room detail by id ───────────────────────────────────────────────
+  // ── Fetch room detail ──────────────────────────────────────────────────────
   static Future<m.RoomModel> fetchRoomDetail(int id) async {
-    final uri = Uri.parse('$API_BASE_URL/api/business/rooms/$id');
-    final resp = await http.get(uri).timeout(const Duration(seconds: 10));
-    if (resp.statusCode != 200) {
-      throw Exception('Lỗi tải chi tiết phòng: ${resp.statusCode} ${resp.reasonPhrase}');
-    }
-    final dynamic decoded = json.decode(resp.body);
-    final dynamic data = _unwrap(decoded);
-    if (data is! Map<String, dynamic>) {
-      throw Exception('Dữ liệu phòng không đúng định dạng');
-    }
-    return m.RoomModel.fromJson(data);
+    final resp = await http.get(Uri.parse('$_base/api/business/rooms/$id'))
+        .timeout(const Duration(seconds: 10));
+    _checkStatus(resp);
+    final data = _unwrap(json.decode(resp.body));
+    return m.RoomModel.fromJson(data as Map<String, dynamic>);
   }
 
-  // ─── Update full room info (PUT) ───────────────────────────────────────────
+  // ── Update room (PUT) ──────────────────────────────────────────────────────
+  // Backend nhận RoomDetailDTO với BigDecimal fields.
+  // Gửi số nguyên hoặc double đều được (Jackson tự convert).
   static Future<m.RoomModel> updateRoom(int id, Map<String, dynamic> payload) async {
-    final uri = Uri.parse('$API_BASE_URL/api/business/rooms/$id');
     final resp = await http.put(
-      uri,
+      Uri.parse('$_base/api/business/rooms/$id'),
       headers: {'Content-Type': 'application/json'},
       body: json.encode(payload),
     ).timeout(const Duration(seconds: 10));
-    if (resp.statusCode < 200 || resp.statusCode >= 300) {
-      throw Exception('Lỗi cập nhật phòng: ${resp.statusCode} ${resp.reasonPhrase}');
-    }
-    final dynamic decoded = json.decode(resp.body);
-    final dynamic data = _unwrap(decoded);
+    _checkStatus(resp);
+    final data = _unwrap(json.decode(resp.body));
     return m.RoomModel.fromJson(data as Map<String, dynamic>);
   }
 
-  // ─── Update room status (PATCH) ────────────────────────────────────────────
+  // ── Update room status (PATCH) ─────────────────────────────────────────────
+  // Backend: PATCH /api/business/rooms/{id}/status?status=AVAILABLE
+  // Trả về ApiResponse<Void> (data = null) → chỉ cần kiểm tra success
   static Future<void> updateRoomStatus(int id, String status) async {
-    final uri = Uri.parse('$API_BASE_URL/api/business/rooms/$id/status?status=$status');
-    final resp = await http.patch(uri).timeout(const Duration(seconds: 10));
-    if (resp.statusCode < 200 || resp.statusCode >= 300) {
-      throw Exception('Lỗi cập nhật trạng thái: ${resp.statusCode} ${resp.reasonPhrase}');
-    }
+    final resp = await http.patch(
+      Uri.parse('$_base/api/business/rooms/$id/status?status=$status'),
+    ).timeout(const Duration(seconds: 10));
+    _checkStatus(resp);
+    // Không cần parse data, chỉ cần không throw
   }
 
-  // ─── Fetch room by roomCode ────────────────────────────────────────────────
+  // ── Fetch room by code ─────────────────────────────────────────────────────
   static Future<m.RoomModel> fetchRoomByCode(String roomCode) async {
-    final uri = Uri.parse('$API_BASE_URL/api/business/rooms/code/$roomCode');
-    final resp = await http.get(uri).timeout(const Duration(seconds: 10));
-    if (resp.statusCode != 200) {
-      throw Exception('Không tìm thấy phòng với mã $roomCode');
-    }
-    final dynamic decoded = json.decode(resp.body);
-    final dynamic data = _unwrap(decoded);
+    final resp = await http.get(Uri.parse('$_base/api/business/rooms/code/$roomCode'))
+        .timeout(const Duration(seconds: 10));
+    _checkStatus(resp);
+    final data = _unwrap(json.decode(resp.body));
     return m.RoomModel.fromJson(data as Map<String, dynamic>);
+  }
+
+  // ── Helper: check HTTP status and throw readable error ────────────────────
+  static void _checkStatus(http.Response resp) {
+    if (resp.statusCode >= 200 && resp.statusCode < 300) return;
+
+    // Try to extract backend error message from ApiResponse body
+    try {
+      final body = json.decode(resp.body);
+      final msg = body['message'] ?? body['error'] ?? resp.reasonPhrase;
+      throw Exception('Lỗi cập nhật trạng thái: ${resp.statusCode}. $msg');
+    } catch (e) {
+      if (e is Exception) rethrow;
+      throw Exception('Lỗi HTTP ${resp.statusCode}: ${resp.reasonPhrase}');
+    }
   }
 }
