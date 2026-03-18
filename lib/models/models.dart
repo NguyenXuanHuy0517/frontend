@@ -21,10 +21,10 @@ class RoomModel {
   final List<String> images;
   final List<String> amenities;
   final int? areaId;
-  final String areaName;
-  final String address;
-  final double latitude;
-  final double longitude;
+  final String? areaName;   // nullable — backend có thể null khi chưa gán khu
+  final String? address;
+  final double? latitude;
+  final double? longitude;
 
   // Legacy fields for UI compatibility
   final String id;
@@ -44,16 +44,18 @@ class RoomModel {
     required this.images,
     required this.amenities,
     this.areaId,
-    required this.areaName,
-    required this.address,
-    required this.latitude,
-    required this.longitude,
+    this.areaName,
+    this.address,
+    this.latitude,
+    this.longitude,
     required this.id,
     required this.area,
     this.tenant,
     required this.rent,
     required this.floor,
   });
+
+  String get areaString => areaName ?? '';
 
   String get statusString {
     switch (status) {
