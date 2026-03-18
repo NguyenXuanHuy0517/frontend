@@ -1,104 +1,171 @@
 // lib/services/api.dart
-
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/models.dart' as m;
 
-const API_BASE_URL = 'http://localhost:8081';
+const _base = 'http://localhost:8081';
+const _currentHostId = 1; // Thực tế lấy từ JWT token sau khi login
 
 class ApiClient {
-  // ─── Rooms ──────────────────────────────────────────────────────────────────
+  // ── Token storage ──────────────────────────────────────────────────────────
+  // Lưu JWT token sau khi login thành công
+  static String? _token;
 
-  /// Lấy danh sách tổng quan tất cả phòng
+  static void setToken(String token) => _token = token;
+  static void clearToken() => _token = null;
+  static bool get hasToken => _token != null;
+
+  // ── Headers ────────────────────────────────────────────────────────────────
+  // Header JSON thuần (cho các endpoint không cần auth)
+  static const Map<String, String> _jsonHeaders = {
+    'Content-Type': 'application/json',
+  };
+
+  // Header có kèm Authorization Bearer token
+  static Map<String, String> get _authHeaders => {
+    'Content-Type': 'application/json',
+    if (_token != null) 'Authorization': 'Bearer $_token',
+  };
+
+  // Header GET có auth (không có Content-Type)
+  static Map<String, String> get _getAuthHeaders => {
+    if (_token != null) 'Authorization': 'Bearer $_token',
+  };
+
+  // ── Rooms ──────────────────────────────────────────────────────────────────
+
   static Future<List<m.RoomModel>> fetchRoomsOverview() async {
-    final uri = Uri.parse('$API_BASE_URL/api/business/rooms/overview');
-    final resp = await http.get(uri);
-    if (resp.statusCode != 200) {
-      throw Exception('Lỗi tải danh sách phòng: ${resp.statusCode} ${resp.reasonPhrase}');
-    }
-    final body = json.decode(resp.body);
-    List items;
-    if (body is List) {
-      items = body;
-    } else if (body is Map<String, dynamic>) {
-      if (body['data'] is List) {
-        items = body['data'];
-      } else if (body['rooms'] is List) {
-        items = body['rooms'];
-      } else {
-        throw Exception('Unexpected response format for rooms overview: Map without "data"/"rooms" list keys. Got keys: ${body.keys}');
-      }
+    final r = await http.get(
+      Uri.parse('$_base/api/business/rooms/overview'),
+      headers: _getAuthHeaders,
+    );
+    _check(r, 'Lỗi tải danh sách phòng');
+    // FIX: backend có thể trả List hoặc Map wrapper { "data": [...] }
+    final decoded = json.decode(r.body);
+    final List rawList;
+    if (decoded is List) {
+      rawList = decoded;
+    } else if (decoded is Map) {
+      // Thử các key phổ biến: data, rooms, content
+      rawList = (decoded['data'] ?? decoded['rooms'] ?? decoded['content'] ?? []) as List;
     } else {
-      throw Exception('Unexpected response type: ${body.runtimeType}');
+      rawList = [];
     }
-    return items.map((e) => m.RoomModel.fromJson(e as Map<String, dynamic>)).toList();
+    return rawList
+        .map((e) => m.RoomModel.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
-  /// Lấy chi tiết phòng theo ID
   static Future<m.RoomModel> fetchRoomDetail(int id) async {
-    final uri = Uri.parse('$API_BASE_URL/api/business/rooms/$id');
-    final resp = await http.get(uri);
-    if (resp.statusCode != 200) {
-      throw Exception('Lỗi tải chi tiết phòng: ${resp.statusCode} ${resp.reasonPhrase}');
-    }
-    return m.RoomModel.fromJson(json.decode(resp.body) as Map<String, dynamic>);
+    final r = await http.get(
+      Uri.parse('$_base/api/business/rooms/$id'),
+      headers: _getAuthHeaders,
+    );
+    _check(r, 'Lỗi tải chi tiết phòng');
+    return m.RoomModel.fromJson(json.decode(r.body));
   }
 
-  /// Tìm phòng theo mã phòng (roomCode)
-  static Future<m.RoomModel> fetchRoomByCode(String roomCode) async {
-    final uri = Uri.parse('$API_BASE_URL/api/business/rooms/code/$roomCode');
-    final resp = await http.get(uri);
-    if (resp.statusCode != 200) {
-      throw Exception('Không tìm thấy phòng với mã $roomCode');
-    }
-    return m.RoomModel.fromJson(json.decode(resp.body) as Map<String, dynamic>);
+  static Future<m.RoomModel> fetchRoomByCode(String code) async {
+    final r = await http.get(
+      Uri.parse('$_base/api/business/rooms/code/$code'),
+      headers: _getAuthHeaders,
+    );
+    _check(r, 'Không tìm thấy phòng mã $code');
+    return m.RoomModel.fromJson(json.decode(r.body));
   }
 
-  /// THÊM PHÒNG MỚI (POST) - yêu cầu areaId
   static Future<m.RoomModel> createRoom(Map<String, dynamic> payload) async {
-    final uri = Uri.parse('$API_BASE_URL/api/business/rooms');
-    final resp = await http.post(
-      uri,
-      headers: {'Content-Type': 'application/json'},
+    final r = await http.post(
+      Uri.parse('$_base/api/business/rooms'),
+      headers: _authHeaders,
       body: json.encode(payload),
     );
-    if (resp.statusCode != 201) {
-      // Lấy message lỗi từ backend nếu có
-      String errMsg = 'Lỗi thêm phòng: ${resp.statusCode}';
-      try {
-        final body = json.decode(resp.body);
-        if (body is Map && body['message'] != null) errMsg = body['message'];
-      } catch (_) {}
-      throw Exception(errMsg);
-    }
-    return m.RoomModel.fromJson(json.decode(resp.body) as Map<String, dynamic>);
+    _check(r, 'Lỗi thêm phòng');
+    return m.RoomModel.fromJson(json.decode(r.body));
   }
 
-  /// Cập nhật thông tin phòng (PUT)
   static Future<m.RoomModel> updateRoom(int id, Map<String, dynamic> payload) async {
-    final uri = Uri.parse('$API_BASE_URL/api/business/rooms/$id');
-    final resp = await http.put(
-      uri,
-      headers: {'Content-Type': 'application/json'},
+    final r = await http.put(
+      Uri.parse('$_base/api/business/rooms/$id'),
+      headers: _authHeaders,
       body: json.encode(payload),
     );
-    if (resp.statusCode < 200 || resp.statusCode >= 300) {
-      String errMsg = 'Lỗi cập nhật phòng: ${resp.statusCode}';
-      try {
-        final body = json.decode(resp.body);
-        if (body is Map && body['message'] != null) errMsg = body['message'];
-      } catch (_) {}
-      throw Exception(errMsg);
-    }
-    return m.RoomModel.fromJson(json.decode(resp.body) as Map<String, dynamic>);
+    _check(r, 'Lỗi cập nhật phòng');
+    return m.RoomModel.fromJson(json.decode(r.body));
   }
 
-  /// Cập nhật trạng thái phòng (PATCH)
   static Future<void> updateRoomStatus(int id, String status) async {
-    final uri = Uri.parse('$API_BASE_URL/api/business/rooms/$id/status?status=$status');
-    final resp = await http.patch(uri);
-    if (resp.statusCode < 200 || resp.statusCode >= 300) {
-      throw Exception('Lỗi cập nhật trạng thái: ${resp.statusCode} ${resp.reasonPhrase}');
+    final r = await http.patch(
+      Uri.parse('$_base/api/business/rooms/$id/status?status=$status'),
+      headers: _getAuthHeaders,
+    );
+    _check(r, 'Lỗi cập nhật trạng thái phòng');
+  }
+
+  // ── Tenants ────────────────────────────────────────────────────────────────
+
+  static Future<List<m.TenantModel>> fetchTenants({int? hostId}) async {
+    final id = hostId ?? _currentHostId;
+    final r = await http.get(
+      Uri.parse('$_base/api/business/tenants/by-host/$id'),
+      headers: _getAuthHeaders,
+    );
+    _check(r, 'Lỗi tải danh sách người thuê');
+    return (json.decode(r.body) as List)
+        .map((e) => m.TenantModel.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  static Future<m.TenantModel> fetchTenantDetail(int tenantId) async {
+    final r = await http.get(
+      Uri.parse('$_base/api/business/tenants/$tenantId'),
+      headers: _getAuthHeaders,
+    );
+    _check(r, 'Lỗi tải thông tin người thuê');
+    return m.TenantModel.fromJson(json.decode(r.body));
+  }
+
+  static Future<m.TenantModel> createTenant(Map<String, dynamic> payload) async {
+    final r = await http.post(
+      Uri.parse('$_base/api/business/tenants'),
+      headers: _authHeaders,
+      body: json.encode(payload),
+    );
+    _check(r, 'Lỗi tạo người thuê mới');
+    return m.TenantModel.fromJson(json.decode(r.body));
+  }
+
+  static Future<m.TenantModel> updateTenant(int id, Map<String, dynamic> payload) async {
+    final r = await http.put(
+      Uri.parse('$_base/api/business/tenants/$id'),
+      headers: _authHeaders,
+      body: json.encode(payload),
+    );
+    _check(r, 'Lỗi cập nhật người thuê');
+    return m.TenantModel.fromJson(json.decode(r.body));
+  }
+
+  static Future<m.TenantModel> toggleTenantActive(int id) async {
+    final r = await http.patch(
+      Uri.parse('$_base/api/business/tenants/$id/toggle-active'),
+      headers: _getAuthHeaders,
+    );
+    _check(r, 'Lỗi thay đổi trạng thái tài khoản');
+    return m.TenantModel.fromJson(json.decode(r.body));
+  }
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+
+  static void _check(http.Response r, String msg) {
+    if (r.statusCode < 200 || r.statusCode >= 300) {
+      String detail = '';
+      try {
+        final body = json.decode(r.body);
+        if (body is Map && body['message'] != null) {
+          detail = ': ${body['message']}';
+        }
+      } catch (_) {}
+      throw Exception('$msg (${r.statusCode})$detail');
     }
   }
 }

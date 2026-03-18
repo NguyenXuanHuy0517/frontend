@@ -9,6 +9,7 @@ import 'screens/rooms_screen.dart';
 import 'screens/invoices_screen.dart';
 import 'screens/utilities_screen.dart';
 import 'widgets/chatbot_widget.dart';
+import 'screens/tenants_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -122,6 +123,7 @@ class _AppShellState extends State<AppShell> {
       1 => const RoomsScreen(),
       2 => const InvoicesScreen(),
       3 => const UtilitiesScreen(),
+      5 => const TenantsScreen(),
       _ => _PlaceholderScreen(navItem: _navItems[index]),
     });
   }
